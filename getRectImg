@@ -1,0 +1,164 @@
+#include <opencv2/opencv.hpp>
+#include <direct.h>
+#include <iostream>
+#include <conio.h>
+#include <io.h>
+
+using namespace std;
+cv::Rect select;
+bool select_flag = false;
+cv::Mat img, img1,img2;
+string str;
+cv::Rect roi;
+struct 
+{
+	string source_path, file_type;
+	vector<string> file_name;
+	stringstream target_path;
+
+}Files;
+
+bool getAllFiles(string path, vector<string>& files, string file_type);
+void on_Mouse(int event, int x, int y, int flags, void* param);
+
+int main()
+{
+	std::cout << "输入图片所在文件夹路径（如C:/Users/Desktop）：" << std::endl;
+	std::cin >> Files.source_path;
+	//Files.source_path = "C:/Users/weikang1/Desktop/not_recognize/not_recognize";
+	std::cout << "输入图片格式（如.jpg）：" << std::endl;
+	std::cin >> Files.file_type;
+	//Files.file_type = ".png";
+	if (!getAllFiles(Files.source_path, Files.file_name, Files.file_type))
+	{
+		return 0;
+	}
+
+	//创建文件夹
+	Files.target_path << Files.source_path << "/png";
+	if (0 != _access(Files.target_path.str().c_str(), 0))
+	{	// if this folder not exist, create a new one.
+		_mkdir(Files.target_path.str().c_str());   // 返回 0 表示创建成功，-1 表示失败
+		cout << "png文件夹，创建成功" << endl;
+	}
+	Files.target_path.str("");
+	Files.target_path << Files.source_path << "/bmp";
+	if (0 != _access(Files.target_path.str().c_str(), 0))
+	{	// if this folder not exist, create a new one.
+		_mkdir(Files.target_path.str().c_str());   // 返回 0 表示创建成功，-1 表示失败
+		cout << "bmp文件夹，创建成功" << endl;
+	}
+	Files.target_path.str("");
+
+	for (int i = 0; i < Files.file_name.size(); ++i)
+	{
+		//1.读取并显示图片，-1 unchanged
+		img = cv::imread(Files.file_name[i],-1);
+		img1 = img.clone();
+		img1 *= 64;
+		str = to_string(i + 1);
+		cv::imshow(str, img1);
+		cv::moveWindow(str, 500, 100);
+
+		//2.对图片AOI进行框选
+		cv::setMouseCallback(str, on_Mouse, 0);
+		cv::waitKey(0);
+		//3.对图片进行剪裁
+		cv::Mat roiImg = img(roi);
+
+		//4.保存图片（保存成16位png和8位bmp）
+		std::vector<int> compression_params;
+		compression_params.push_back(cv::IMWRITE_PNG_COMPRESSION);
+		compression_params.push_back(0);    // 无压缩png.
+		compression_params.push_back(cv::IMWRITE_PNG_STRATEGY);
+		compression_params.push_back(cv::IMWRITE_PNG_STRATEGY_DEFAULT);
+		Files.target_path << Files.source_path << "/png/" << str << ".png";
+		if (!cv::imwrite(Files.target_path.str(), roiImg, compression_params))
+		{
+			cout << str << ".png  unsave" << endl;
+		}
+		Files.target_path.str("");
+		Files.target_path << Files.source_path << "/bmp/" << str << ".bmp";
+		roiImg.convertTo(roiImg, CV_8UC1,1.0/4);
+		if (!cv::imwrite(Files.target_path.str(), roiImg))
+		{
+			cout << str << ".bmp  unsave" << endl;
+		}
+
+		//清理缓存
+		cv::destroyWindow(to_string(i + 1));
+		Files.target_path.str("");
+	}
+	cv::destroyAllWindows();
+	return 0;
+}
+
+bool getAllFiles(string path, vector<string>& files, string file_type)
+{
+	// 文件句柄
+	intptr_t handle_file = 0;
+	// 文件信息
+	struct _finddata_t file_info;
+	string p;
+	int getch;
+	if ((handle_file = _findfirst(p.assign(path).append("/*" + file_type).c_str(), &file_info)) != -1) {
+		do {
+			// 保存文件的全路径
+			files.push_back(p.assign(path).append("/").append(file_info.name));
+
+		} while (_findnext(handle_file, &file_info) == 0);  //寻找下一个，成功返回0，否则-1
+
+		_findclose(handle_file);
+		std::cout << endl
+			<< "图片获取成功，共获取到"
+			<< file_type
+			<< "格式，图片共"
+			<< files.size()
+			<< "张"
+			<< std::endl;
+		return true;
+	}
+	else
+	{
+		std::cout << endl << "图片获取失败" << endl;
+		std::cout << "输入回车退出..." << endl;
+		getch = _getch();
+		return false;
+	}
+}
+
+void on_Mouse(int event, int x, int y, int flags, void* param)//实现画矩形框并截图
+{
+	cv::Point p1, p2;
+	switch (event)
+	{
+	case  cv::EVENT_LBUTTONDOWN:
+		select.x = x;
+		select.y = y;
+		select_flag = true;
+		break;
+
+	case cv::EVENT_MOUSEMOVE:
+		if (select_flag)
+		{
+			img1.copyTo(img2);
+			p1 = cv::Point(select.x, select.y);
+			p2 = cv::Point(x, y);
+			rectangle(img2, p1, p2, cv::Scalar(65500, 0, 0), 2);
+			cv::imshow(str, img2);
+		}
+		break;
+
+	case cv::EVENT_LBUTTONUP:
+		//显示框出的ROI
+		roi = cv::Rect(cv::Point(select.x, select.y), cv::Point(x, y));
+		if (roi.width && roi.height)//点一下时会没有反应
+		{
+			cv::Mat roiImg = img1(roi);
+			cv::imshow("roi", roiImg);
+			cv::moveWindow("roi", 0, 0);
+		}
+		select_flag = false;
+		break;
+	}
+}
